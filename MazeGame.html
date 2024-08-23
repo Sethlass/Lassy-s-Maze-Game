@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gran Trak 10 Replica</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+            background-color: black;
+            display: block;
+            margin: 20px auto;
+        }
+        body {
+            font-family: monospace;
+            font-size: 20px;
+            background-color: black;
+            color: white;
+            text-align: center;
+        }
+        #title {
+            font-size: 32px;
+            font-weight: bold;
+            color: rgb(233, 225, 70);
+            margin-top: 20px;
+        }
+        #lapCounter, #timer, #record {
+            margin-top: 19px;
+            color: white;
+            font-size: 24px;
+        }
+        #record {
+            margin-top: 10px;
+            font-size: 18px;
+        }
+        #rules, #instructions {
+            margin-top: 30px;
+            color: yellow;
+            font-size: 18px;
+        }
+        #instructions {
+            margin-top: 10px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Title -->
+    <div id="title">Lassy's Maze Game</div>
+     <!-- Game Display -->
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="lapCounter">Laps: 0</div>
+    <div id="timer">Time: 0.00s</div>
+    <div id="record">Top 5 Lap Times:</div>
+    <div id="topScores"></div>
+
+    <!-- Rules Section -->
+    <div id="rules">
+        <h2>Rules</h2>
+        <p>Your objective is to collect all 3 gold blocks scattered across the track before you can reach the finish line. The finish line will be locked until all gold blocks are collected.</p>
+    </div>
+
+    <!-- Instructions Section -->
+    <div id="instructions">
+        <h2>Instructions</h2>
+        <p>Use the following keys to control the car:</p>
+        <ul>
+            <li><strong>W:</strong> Move Up</li>
+            <li><strong>A:</strong> Move Left</li>
+            <li><strong>S:</strong> Move Down</li>
+            <li><strong>D:</strong> Move Right</li>
+        </ul>
+        <p><strong>Shift:</strong> Hold Shift to increase speed.</p>
+        <p>Avoid the walls! If you crash, the game will restart. Once you've collected all the gold blocks, head to the finish line to complete the lap.</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const TILE_SIZE = 20;
+        const keys = {};
+
+        let moveDelay = 0;
+        let laps = 0;
+        let speed = 1; // Initial speed
+
+        let startTime = null;
+        let currentTime = 0;
+        let topLapTimes = []; // Array to hold the top 5 lap times
+        let timerInterval = null;
+
+        const track = {
+            width: 40,
+            height: 30,
+            layout: []
+        };
+
+        const car = {
+            x: 1,
+            y: 1,
+            width: TILE_SIZE - 4,
+            height: TILE_SIZE - 4,
+            color: 'red',
+            startX: 1,
+            startY: 1
+        };
+
+        const finish = {
+            x: 38,
+            y: 17,
+            color: 'green',
+            locked: true // Initially locked until all gold blocks are collected
+        };
+
+        const goldBlocks = [
+            { x: 7, y: 7, collected: false },
+            { x: 36, y: 11, collected: false },
+            { x: 34, y: 11, collected: false },
+            { x: 30, y: 15, collected: false }
+        ];
+
+        let gameActive = true;
+
+        function initTrack() {
+            console.log('Initializing track...');
+            for (let key in keys) {
+                if (keys.hasOwnProperty(key)) {
+                    keys[key] = false;
+                }
+            }
+
+            const trackDesign = [
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+                [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                [1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+                [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1],
+                [1, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+                [1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+                [1, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+                [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+                [1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+                [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1],
+                [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+                [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+                [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+                [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+            ];
+           
+            // Ensure the layout matches the track design
+            track.layout = trackDesign.map(row => row.slice());
+
+            track.layout = trackDesign;
+            car.x = car.startX * TILE_SIZE;
+            car.y = car.startY * TILE_SIZE;
+            gameActive = true;
+
+            // Reset gold blocks
+            goldBlocks.forEach(block => block.collected = false);
+            finish.locked = true; // Lock the finish line at the start
+
+            startTimer(); // Start the timer when a new game begins
+
+            console.log('Track initialized:', track.layout);
+        }
+
+        function startTimer() {
+            startTime = Date.now();
+            timerInterval = setInterval(() => {
+                currentTime = (Date.now() - startTime) / 1000;
+                document.getElementById('timer').innerText = `Time: ${currentTime.toFixed(2)}s`;
+            }, 100); // Update timer every 100ms
+        }
+
+        function stopTimer() {
+            clearInterval(timerInterval);
+        }
+
+        function finishLap() {
+            // Record the lap time only when the player finishes the lap
+            topLapTimes.push(currentTime);
+            topLapTimes.sort((a, b) => a - b);
+            topLapTimes = topLapTimes.slice(0, 5);
+            updateRecordBoard();
+        }
+
+        function updateRecordBoard() {
+            const topScoresDiv = document.getElementById('topScores');
+            topScoresDiv.innerHTML = ''; // Clear existing content
+            topLapTimes.forEach((time, index) => {
+                const timeElement = document.createElement('div');
+                timeElement.textContent = `${index + 1}. ${time.toFixed(2)}s`;
+                topScoresDiv.appendChild(timeElement);
+            });
+        }
+
+        function drawTrack() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
+        
+            // Draw the track layout
+            for (let y = 0; y < track.height; y++) {
+                if (!track.layout[y]) {
+                    console.error(`Row ${y} is undefined in track.layout`);
+                    continue; // Skip if the row is undefined
+                }
+                for (let x = 0; x < track.width; x++) {
+                    const tile = track.layout[y][x];
+                    if (tile === undefined) {
+                        console.error(`Tile at (${x}, ${y}) is undefined`);
+                        continue; // Skip if the tile is undefined
+                    }
+                    ctx.fillStyle = tile === 1 ? 'white' : 'gray'; // White for walls, gray for road
+                    ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                }
+            }
+        
+            // Draw gold blocks
+            goldBlocks.forEach(block => {
+                if (!block.collected) {
+                    ctx.fillStyle = 'yellow';
+                    ctx.fillRect(block.x * TILE_SIZE, block.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                }
+            });
+        
+            // Draw the finish line
+            ctx.fillStyle = finish.locked ? 'darkgreen' : finish.color; // Dark green if locked
+            ctx.fillRect(finish.x * TILE_SIZE, finish.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        
+            // Draw the car
+            ctx.fillStyle = car.color;
+            ctx.fillRect(car.x + 2, car.y + 2, car.width, car.height);
+        }
+        
+
+        function moveCar() {
+            if (!gameActive || moveDelay++ % (10 / speed) !== 0) return;
+
+            // Handle car movement based on user input
+            if (keys['w'] && car.y > 0) car.y -= TILE_SIZE;
+            if (keys['s'] && car.y < (track.height - 1) * TILE_SIZE) car.y += TILE_SIZE;
+            if (keys['a'] && car.x > 0) car.x -= TILE_SIZE;
+            if (keys['d'] && car.x < (track.width - 1) * TILE_SIZE) car.x += TILE_SIZE;
+
+            const carTileX = Math.floor(car.x / TILE_SIZE);
+            const carTileY = Math.floor(car.y / TILE_SIZE);
+
+            // Check for collision with walls
+            if (track.layout[carTileY][carTileX] === 1) {
+                gameActive = false;
+                stopTimer(); // Stop the timer on crash
+                alert("You crashed!");
+                setTimeout(initTrack, 1000); // Restart after 1 second
+                return;
+            }
+
+            // Check for gold block collection
+            goldBlocks.forEach(block => {
+                if (block.x === carTileX && block.y === carTileY && !block.collected) {
+                    block.collected = true;
+                    console.log('Collected a gold block!');
+                    if (goldBlocks.every(b => b.collected)) {
+                        finish.locked = false; // Unlock the finish line
+                        console.log('All gold blocks collected! Finish line unlocked!');
+                    }
+                }
+            });
+
+            // Check if the car reaches the finish line
+            if (!finish.locked && carTileX === finish.x && carTileY === finish.y) {
+                laps++;
+                document.getElementById('lapCounter').innerText = `Laps: ${laps}`;
+                stopTimer(); // Stop the timer on lap completion
+                finishLap(); // Record the lap time
+                gameActive = false;
+                alert("You finished!");
+                setTimeout(initTrack, 1000); // Restart after 1 second
+            }
+        }
+
+        function gameLoop() {
+            moveCar();
+            drawTrack();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Event listener for when the document content is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            initTrack();
+            gameLoop();
+        });
+
+        // Event listeners for keydown and keyup to control car movement
+        document.addEventListener('keydown', function (e) {
+            keys[e.key.toLowerCase()] = true;
+
+            // Speed control: Hold Shift to boost speed
+            if (e.key === 'Shift') {
+                speed = 2; // Increase speed when Shift is held
+            }
+        });
+
+        document.addEventListener('keyup', function (e) {
+            keys[e.key.toLowerCase()] = false;
+
+            // Reset speed to normal when Shift is released
+            if (e.key === 'Shift') {
+                speed = 1; // Reset speed when Shift is released
+            }
+        });
+    </script>
+</body>
+</html>
+
